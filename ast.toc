@@ -7,9 +7,9 @@
   (string-list [_] (list "<InlineAST>")))
 
 (defn inline-text
-  ([text return-type] (fr/free (inline-ast text return-type "" 0)))
+  ([text return-type] (fr/pure (inline-ast text return-type "" 0)))
   ([text return-type file-name line-number]
-     (fr/free (inline-ast text return-type file-name line-number))))
+     (fr/pure (inline-ast text return-type file-name line-number))))
 
 (deftype symbol-ast [ns sym file-name line-number]
   Stringable
@@ -20,12 +20,12 @@
 
 (extend-type Symbol
   SymbolAST
-  (sym [s] (fr/free (symbol-ast "" s "" 0))))
+  (sym [s] (fr/pure (symbol-ast "" s "" 0))))
 
 (extend-type grmr/tagged-symbol
   SymbolAST
   (sym [s] (let [[ns base s file-name line-number] (type-args s)]
-             (fr/free (symbol-ast ns base file-name line-number)))))
+             (fr/pure (symbol-ast ns base file-name line-number)))))
 
 (deftype keyword-ast [kw]
   Stringable
@@ -33,33 +33,45 @@
     (list "<KeywordAST " (str kw) ">")))
 
 (defn kw [k]
-  (fr/free (keyword-ast k)))
+  (fr/pure (keyword-ast k)))
 
 (deftype const-number-ast [num]
   Stringable
   (string-list [_] (list (str num))))
 
 (defn number [n]
-  (fr/free (const-number-ast n)))
+  (fr/pure (const-number-ast n)))
 
 (deftype const-string-ast [const-str]
   Stringable
   (string-list [_] (list "<StringAST \"" const-str "\"")))
 
 (defn strng [s]
-  (fr/free (const-string-ast s)))
+  (fr/pure (const-string-ast s)))
 
-(deftype add-ns-ast [ns-sym asts])
+(deftype module-ast [file-path])
+
+(defn module [file-path]
+  (fr/pure (module-ast file-path)))
+
+(deftype git-dep-ast [repo file-name args])
+
+(defn git-dep [repo file args]
+  (fr/pure (git-dep-ast repo file args)))
+
+(deftype add-ns-ast [ns-sym mod]
+  (string-list [_] (list "<AddNS " (str ns-sym) ">")))
 
 (defn ns-add [ns mod]
-  (fr/free (add-ns-ast ns mod)))
+  (fr/pure (add-ns-ast ns mod)))
 
 (deftype extend-ast [type impls]
   Stringable
-  (string-list [_] (list "<ExtendAST " (str type) ">")))
+  (string-list [_] (list "<ExtendAST " ;; (str type)
+                         ">")))
 
 (defn type-extension [type impls]
-  (fr/free (extend-ast type impls)))
+  (fr/pure (extend-ast type impls)))
 
 (deftype and-ast [clauses]
   Stringable
@@ -69,7 +81,7 @@
           (list ">"))))
 
 (defn and-expr [clauses]
-  (fr/free (and-ast clauses)))
+  (fr/pure (and-ast clauses)))
 
 (deftype or-ast [clauses]
   Stringable
@@ -79,19 +91,19 @@
           (list ">"))))
 
 (defn or-expr [clauses]
-  (fr/free (or-ast clauses)))
+  (fr/pure (or-ast clauses)))
 
 (deftype reify-ast [type-num impls])
 
 (defn reified [type-num impls]
-  (fr/free (reify-ast type-num impls)))
+  (fr/pure (reify-ast type-num impls)))
 
 (deftype protocol-ast [protocol-sym prototypes]
   Stringable
   (string-list [_] (list "<ProtocolAST " (str protocol-sym) ">")))
 
 (defn proto [sym proto-fns]
-  (fr/free (protocol-ast sym proto-fns)))
+  (fr/pure (protocol-ast sym proto-fns)))
 
 (deftype call-ast [callee params]
   Stringable
@@ -99,8 +111,8 @@
     (list "<CallAST " (str callee) " " (str params) ">")))
 
 (defn call-expr [target params]
-  (fr/free (call-ast target
-                     (apply* (fr/free list) params))))
+  (fr/pure (call-ast target
+                     (apply* (fr/pure list) params))))
 
 (deftype binding-ast [binding val]
   Stringable
@@ -108,7 +120,7 @@
     (list "<BindingAST " (str binding) " " (str val) ">")))
 
 (defn binding [binding val]
-  (fr/free (binding-ast binding val)))
+  (fr/pure (binding-ast binding val)))
 
 (deftype let-ast [bindings body]
   Stringable
@@ -116,8 +128,8 @@
     (list "<LetAST " (str bindings) "\n" (str body) ">")))
 
 (defn let-expr [bindings body]
-  (fr/free (let-ast (apply* (fr/free list) bindings)
-                    (apply* (fr/free list) body))))
+  (fr/pure (let-ast (apply* (fr/pure list) bindings)
+                    (apply* (fr/pure list) body))))
 
 (deftype quoted-ast [q-val]
   Stringable
@@ -125,44 +137,46 @@
     (list "<Quoted " (str q-val) ">")))
 
 (defn quoted [q-val]
-  (fr/free (quoted-ast q-val)))
+  (fr/pure (quoted-ast q-val)))
 
-(deftype main-ast [args body])
+(deftype main-ast [args body]
+  Stringable
+  (string-list [_] "<MainAST>"))
 
 (defn main-fn [args body]
-  (fr/free (main-ast args (apply* (fr/free list) body))))
+  (fr/pure (main-ast args (apply* (fr/pure list) body))))
 
 (deftype fn-arity-ast [args body]
   Stringable
   (string-list [_] (list "<fn-arity-ast >")))
 
 (defn fn-arity [args body]
-  (fr/free (fn-arity-ast args (apply* (fr/free list) body))))
+  (fr/pure (fn-arity-ast args (apply* (fr/pure list) body))))
 
 (deftype fn-ast [fn-sym arities]
   Stringable
   (string-list [_] (list "<fixed-arity-ast >")))
 
 (defn fn-expr [sym arities]
-  (fr/free (fn-ast sym (apply* (fr/free list) arities))))
+  (fr/pure (fn-ast sym (apply* (fr/pure list) arities))))
 
 (deftype declaration-ast [sym]
   Stringable
   (string-list [_] (list "<DeclareAST " (str sym) ">")))
 
 (defn declare [sym]
-  (fr/free (declaration-ast sym)))
+  (fr/pure (declaration-ast sym)))
 
 (deftype definition-ast [sym value]
   Stringable
   (string-list [_] (list "<DefAST " (str sym) ">")))
 
 (defn def-expr [sym value]
-  (fr/free (definition-ast sym value)))
+  (fr/pure (definition-ast sym value)))
 
 (deftype type-ast [sym type-val-sym fields constructor impls]
   Stringable
   (string-list [_] (list "<TypeAST " (str sym) ">")))
 
 (defn type-expr [sym type-val-sym fields constructor impls]
-  (fr/free (type-ast sym type-val-sym fields constructor impls)))
+  (fr/pure (type-ast sym type-val-sym fields constructor impls)))
