@@ -2,14 +2,14 @@
 (add-ns fr (git-dependency "github.com:jduey/free.git" "free.toc"))
 (add-ns grmr (git-dependency "github.com:jduey/grammar.git" "grammar.toc"))
 
-(deftype inline-ast [txt result-type file-name line-number]
+(deftype InlineC [txt result-type file-name line-number]
   Stringable
   (string-list [_] (list "<InlineAST>")))
 
-(defn inline-text
-  ([text return-type] (fr/pure (inline-ast text return-type "" 0)))
+(defn inline-C
+  ([text return-type] (fr/pure (InlineC text return-type "" 0)))
   ([text return-type file-name line-number]
-     (fr/pure (inline-ast text return-type file-name line-number))))
+     (fr/pure (InlineC text return-type file-name line-number))))
 
 (deftype symbol-ast [ns sym file-name line-number]
   Stringable
