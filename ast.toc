@@ -2,9 +2,32 @@
 (add-ns fr (git-dependency "github.com:jduey/free.git" "free.toc"))
 (add-ns grmr (git-dependency "github.com:jduey/grammar.git" "grammar.toc"))
 
+(defprotocol FileLineInfo
+  (file-name [ast] "")
+  (line-number [ast] 0))
+
+(extend-type Vector
+  FileLineInfo
+  (file-name [v] (file-name (extract (first v))))
+  (line-number [v] (line-number (extract (first v)))))
+
+(extend-type List
+  FileLineInfo
+  (file-name [p] (file-name (extract (first p))))
+  (line-number [p] (line-number (extract (first p)))))
+
+(extend-type fr/pure
+  FileLineInfo
+  (file-name [p] (file-name (.v p)))
+  (line-number [p] (line-number (.v p))))
+
 (deftype InlineC [txt result-type file-name line-number]
   Stringable
-  (string-list [_] (list "<InlineAST>")))
+  (string-list [_] (list "<InlineAST>"))
+
+  FileLineInfo
+  (file-name [_] file-name)
+  (line-number [_] line-number))
 
 (defn inline-C
   ([text return-type] (fr/pure (InlineC text return-type "" 0)))
@@ -13,7 +36,11 @@
 
 (deftype symbol-ast [ns sym file-name line-number]
   Stringable
-  (string-list [f] (list "<SymbolAST '"(str sym) " " file-name " " (str line-number) "'>")))
+  (string-list [f] (list "<SymbolAST '"(str sym) " " (str file-name) " " (str line-number) "'>"))
+
+  FileLineInfo
+  (file-name [_] file-name)
+  (line-number [_] line-number))
 
 (defprotocol SymbolAST
   (sym [_]))
@@ -25,7 +52,11 @@
 (extend-type grmr/tagged-symbol
   SymbolAST
   (sym [s] (let [[ns base s file-name line-number] (type-args s)]
-             (fr/pure (symbol-ast ns base file-name line-number)))))
+             (fr/pure (symbol-ast ns base file-name line-number))))
+
+  FileLineInfo
+  (file-name [s] (.file-name s))
+  (line-number [s] (.line-num s)))
 
 (deftype keyword-ast [kw]
   Stringable
@@ -60,7 +91,13 @@
   (fr/pure (git-dep-ast repo file args)))
 
 (deftype add-ns-ast [ns-sym mod]
-  (string-list [_] (list "<AddNS " (str ns-sym) ">")))
+  Stringable
+  (string-list [_] (list "<AddNS " (str ns-sym) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name ns-sym))
+  (line-number [_] (line-number ns-sym))
+  )
 
 (defn ns-add [ns mod]
   (fr/pure (add-ns-ast ns mod)))
@@ -68,7 +105,11 @@
 (deftype extend-ast [type impls]
   Stringable
   (string-list [_] (list "<ExtendAST " ;; (str type)
-                         ">")))
+                         ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name type))
+  (line-number [_] (line-number type)))
 
 (defn type-extension [type impls]
   (fr/pure (extend-ast type impls)))
@@ -78,7 +119,11 @@
   (string-list [_]
     (comp (list "<OrAST ")
           (flatten (map clauses string-list))
-          (list ">"))))
+          (list ">")))
+
+  FileLineInfo
+  (file-name [_] (extract (map (first clauses) file-name)))
+  (line-number [_] (extract (map (first clauses) line-number))))
 
 (defn and-expr [clauses]
   (fr/pure (and-ast clauses)))
@@ -88,19 +133,30 @@
   (string-list [_]
     (comp (list "<OrAST ")
           (flatten (map clauses string-list))
-          (list ">"))))
+          (list ">")))
+
+  FileLineInfo
+  (file-name [_] (extract (map (first clauses) file-name)))
+  (line-number [_] (extract (map (first clauses) line-number))))
 
 (defn or-expr [clauses]
   (fr/pure (or-ast clauses)))
 
-(deftype reify-ast [type-num impls])
+(deftype reify-ast [type-num impls]
+  FileLineInfo
+  (file-name [_] (extract (map (first impls) file-name)))
+  (line-number [_] (extract (map (first impls) line-number))))
 
 (defn reified [type-num impls]
   (fr/pure (reify-ast type-num impls)))
 
 (deftype protocol-ast [protocol-sym prototypes]
   Stringable
-  (string-list [_] (list "<ProtocolAST " (str protocol-sym) ">")))
+  (string-list [_] (list "<ProtocolAST " (str protocol-sym) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name protocol-sym))
+  (line-number [_] (line-number protocol-sym)))
 
 (defn proto [sym proto-fns]
   (fr/pure (protocol-ast sym proto-fns)))
@@ -108,7 +164,11 @@
 (deftype call-ast [callee params]
   Stringable
   (string-list [_]
-    (list "<CallAST " (str callee) " " (str params) ">")))
+    (list "<CallAST " (str callee) " " (str params) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name callee))
+  (line-number [_] (line-number callee)))
 
 (defn call-expr [target params]
   (fr/pure (call-ast target
@@ -117,7 +177,11 @@
 (deftype binding-ast [binding val]
   Stringable
   (string-list [_]
-    (list "<BindingAST " (str binding) " " (str val) ">")))
+    (list "<BindingAST " (str binding) " " (str val) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name binding))
+  (line-number [_] (line-number binding)))
 
 (defn binding [binding val]
   (fr/pure (binding-ast binding val)))
@@ -125,7 +189,12 @@
 (deftype let-ast [bindings body]
   Stringable
   (string-list [_]
-    (list "<LetAST " (str bindings) "\n" (str body) ">")))
+    (list "<LetAST " (str bindings) "\n" (str body) ">"))
+
+  ;; FileLineInfo
+  ;; (file-name [_] (fr/evaluate bindings file-name))
+  ;; (line-number [_] (fr/evaluate bindings line-number))
+  )
 
 (defn let-expr [bindings body]
   (fr/pure (let-ast (apply* (fr/pure list) bindings)
@@ -134,49 +203,80 @@
 (deftype quoted-ast [q-val]
   Stringable
   (string-list [_]
-    (list "<Quoted " (str q-val) ">")))
+    (list "<Quoted " (str q-val) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name q-val))
+  (line-number [_] (line-number q-val)))
 
 (defn quoted [q-val]
   (fr/pure (quoted-ast q-val)))
 
 (deftype main-ast [args body]
   Stringable
-  (string-list [_] "<MainAST>"))
+  (string-list [_] "<MainAST>")
+
+  FileLineInfo
+  (file-name [_] (file-name body))
+  (line-number [_] (line-number body)))
 
 (defn main-fn [args body]
   (fr/pure (main-ast args (apply* (fr/pure list) body))))
 
-(deftype fn-arity-ast [args body]
+(deftype fn-arity-ast [args arg-types body]
   Stringable
-  (string-list [_] (list "<fn-arity-ast >")))
+  (string-list [_] (comp (list "<fn-arity-ast")
+                         (string-list args)
+                         (string-list body)
+                         (list ">")))
+
+  FileLineInfo
+  (file-name [_] (file-name body))
+  (line-number [_] (line-number body)))
 
 (defn fn-arity [args body]
-  (fr/pure (fn-arity-ast args (apply* (fr/pure list) body))))
+  (fr/pure (fn-arity-ast args [] (apply* (fr/pure list) body))))
 
 (deftype fn-ast [fn-sym arities]
   Stringable
-  (string-list [_] (list "<fixed-arity-ast >")))
+  (string-list [_] (list "<fixed-arity-ast >"))
+
+  FileLineInfo
+  (file-name [_] (extract (map (first arities) file-name)))
+  (line-number [_] (extract (map (first arities) line-number))))
 
 (defn fn-expr [sym arities]
   (fr/pure (fn-ast sym (apply* (fr/pure list) arities))))
 
 (deftype declaration-ast [sym]
   Stringable
-  (string-list [_] (list "<DeclareAST " (str sym) ">")))
+  (string-list [_] (list "<DeclareAST " (str sym) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name sym))
+  (line-number [_] (line-number sym)))
 
 (defn declare [sym]
   (fr/pure (declaration-ast sym)))
 
 (deftype definition-ast [sym value]
   Stringable
-  (string-list [_] (list "<DefAST " (str sym) ">")))
+  (string-list [_] (list "<DefAST " (str sym) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name value))
+  (line-number [_] (line-number value)))
 
 (defn def-expr [sym value]
   (fr/pure (definition-ast sym value)))
 
 (deftype type-ast [sym type-val-sym fields constructor impls]
   Stringable
-  (string-list [_] (list "<TypeAST " (str sym) ">")))
+  (string-list [_] (list "<TypeAST " (str sym) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name sym))
+  (line-number [_] (line-number sym)))
 
 (defn type-expr [sym type-val-sym fields constructor impls]
   (fr/pure (type-ast sym type-val-sym fields constructor impls)))
