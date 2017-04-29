@@ -280,3 +280,14 @@
 
 (defn type-expr [sym type-val-sym fields constructor impls]
   (fr/pure (type-ast sym type-val-sym fields constructor impls)))
+
+(deftype assert-ast [assertion]
+  Stringable
+  (string-list [_] (list "<Assert " (str assertion) ">"))
+
+  FileLineInfo
+  (file-name [_] (file-name assertion))
+  (line-number [_] (line-number assertion)))
+
+(defn assertion [expr]
+  (fr/pure (assert-ast expr)))
